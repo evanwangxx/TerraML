@@ -38,6 +38,7 @@ config = {
     },
 
     # Model Training
+    "train_validation_test": [0.7, 0.2, 0.1],
     "model_option": "lr",
     "param_map": {
         "lr": {

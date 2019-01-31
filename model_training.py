@@ -29,13 +29,6 @@ class Classification(FeatureName):
     def model(self, model):
         self._model = model
 
-    @staticmethod
-    def split_train_test(df, weights):
-        for w in weights:
-            if w < 0.0:
-                raise ValueError("ERROR | Weights must be positive. Found weight value: %s" % w)
-        return df.randomSplit(weights)
-
     def logistic_regression(self, elastic_param, reg_param, family):
         lr = LogisticRegression()\
             .setLabelCol(self.label_index_name)\

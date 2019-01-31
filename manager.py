@@ -66,6 +66,13 @@ class Manager:
     def load_raw_data(self, spark, path):
         return spark.read.csv(path, inferSchema="true")
 
+    @staticmethod
+    def split_train_test(df, weights):
+        for w in weights:
+            if w < 0.0:
+                raise ValueError("ERROR | Weights must be positive. Found weight value: %s" % w)
+        return df.randomSplit(weights)
+
     def train_feature_pipeline(self, data):
         feature_all = self.feature["feature_all"]
         label = self.feature["label"]
@@ -91,7 +98,7 @@ class Manager:
         cls = Classification()
         model = cls.train(feature, model_option, param_map)
 
-        if self.option["model_path"]:
+        if self.option["save_model"]:
             cls.save(self.path["model_path"])
 
         return model
@@ -129,9 +136,12 @@ class Manager:
         pipeline_model, feature_name = self.train_feature_pipeline(data)
         feature = pipeline_model.transform(data).select(feature_name)
 
-        ml_model = self.train_model(feature)
+        train, validation, test = self.split_train_test(feature, config["train_validation_test"])
+        ml_model = self.train_model(train)
 
-        self.evaluation(feature, ml_model, spark)
+        self.evaluation(train, ml_model, spark)
+        self.evaluation(validation, ml_model, spark)
+        self.evaluation(test, ml_model, spark)
 
         sc.stop()
 
