@@ -16,9 +16,8 @@ from pyspark.sql.types import StructType, StructField, DoubleType
 
 class Evaluation(object):
 
-    def __init__(self, model, spark, label=None, prediction=None):
+    def __init__(self, spark, label=None, prediction=None):
         self.spark = spark
-        self.model = model
         self._label = label if label else "label_indexed"
         self._prediction = prediction if label else "prediction"
 
@@ -59,26 +58,24 @@ class Evaluation(object):
 
 class BinaryEvaluation(Evaluation):
 
-    def __init__(self, model, spark):
+    def __init__(self, spark):
         """
         Create a new BinaryClassificationEvaluation configuration
         Args:
-            model: model need to evaluate
             spark: SparkSession
         """
-        super(BinaryEvaluation, self).__init__(model=model, spark=spark)
+        super(BinaryEvaluation, self).__init__(spark=spark)
         self.auc = None
         self.apr = None
         self.matrix = None
         self.likelihood = None
 
-    def evaluation(self, data, threshold_list=None, rdd_model=False):
+    def evaluation(self, label_and_probability, threshold_list=None):
         """
         Evaluate the self.model performance on a certain data set
         Args:
-            data: data in LabeledPoint or rdd
+            label_and_probability: data with true label and prediction
             threshold_list: thresholds, default [0.25, 0.50, 0.75]
-            rdd_model: model is a RDD based model or not
 
         Returns:
             evaluation matrix, auc value, apr value
@@ -91,16 +88,9 @@ class BinaryEvaluation(Evaluation):
                         "TN", "TP", "FN", "FP",
                         "precision", "recall", "TPR", "FPR", "F1"]
         result = {key: [] for key in output_order}
-        data_length = float(data.count())
+        data_length = float(label_and_probability.count())
 
-        model = self.model
-        if rdd_model:
-            model.clearThreshold()
-            self.likelihood = data.map(lambda p: (p.label,
-                                                  float(model.predict(p.features)))).persist()
-        else:
-            self.likelihood = model.transform(data).select(self.label, "probability") \
-                .rdd.map(lambda x: (x[0], x[1][1])).persist()
+        self.likelihood = label_and_probability.rdd.map(lambda x: (x[0], x[1][1])).persist()
 
         # TODO: O(n)*c to O(c)*n, although both in O(n), second one should be faster since less IO
         for threshold in threshold_list:
@@ -123,8 +113,9 @@ class BinaryEvaluation(Evaluation):
             result["FPR"].append(fpr)
             result["F1"].append(f1)
 
-        self.matrix = self.convert_dictionary_to_dataframe(result, self.spark, output_order)
+            label_and_predict.unpersist()
 
+        self.matrix = self.convert_dictionary_to_dataframe(result, self.spark, output_order)
         roc_fpr, roc_tpr = self._convert_roc_axis(result["FPR"], result["TPR"])
         self.auc = self.calculate_trapezoid_area(roc_fpr, roc_tpr)
         self.apr = self.calculate_trapezoid_area(result["recall"], result["precision"])
@@ -239,7 +230,6 @@ class BinaryEvaluation(Evaluation):
         """
         if len(x) != len(y):
             raise ValueError("ERROR | x and y length mismatch")
-
         else:
             area = 0
             for i in range(1, len(x)):
@@ -253,42 +243,37 @@ class MultiEvaluation(Evaluation):
     _true_all_header = "true_all_"
     _probability_column_name = "probability"
 
-    def __init__(self, model, spark):
-        super(MultiEvaluation, self).__init__(model=model, spark=spark)
+    def __init__(self, spark):
+        super(MultiEvaluation, self).__init__(spark=spark)
         self.accuracy = None
         self.distinct_label_name = None
         self.confusion_matrix = None  # confusion matrix by label
         self.precision = None  # precision dictionary by label
         self.recall = None  # recall dictionary by label
 
-    def evaluation(self, data):
+    def evaluation(self, label_and_probability):
         """
         Evaluate the self.model performance on a certain data-set
         Args:
-            data: data in DataFrame
+            label_and_probability: label and probability in DataFrame
         """
-        self._set_distinct_label_name(data, self.label)
-
-        model = self.model
-        likelihood = model.transform(data).select(self.label, self._probability_column_name).rdd
-        label_and_predict = likelihood.map(lambda l: (l[0], float(l[1].argmax()))).cache()
+        self._set_distinct_label_name(label_and_probability, self.label)
+        label_and_predict = label_and_probability.rdd\
+            .map(lambda l: (l[0], float(l[1].argmax()))).cache()
 
         self.accuracy = Evaluation.calculate_accuracy(label_and_predict)
-        cm, true_sum, predict_sum, confusion_matrix = self._confusion_matrix(label_and_predict)
-        self.precision, self.recall = self._confusion_matrix_evaluation(cm, true_sum, predict_sum)
+        cm, true_sum, predict_sum, confusion_matrix = self.construct_confusion_matrix(label_and_predict)
+        self.precision, self.recall = self.evaluate_confusion_matrix(cm, true_sum, predict_sum)
 
         self.confusion_matrix = np.array(confusion_matrix)
 
         return self.confusion_matrix, self.precision, self.recall
 
-    def _confusion_matrix(self, label_and_predict):
+    def construct_confusion_matrix(self, label_and_predict):
         """
         Private method, calculate confusion matrix
         Args:
             label_and_predict: rdd with label and prediction
-
-        Returns:
-
         """
         cm_dict = {}
         true_sum = {}
@@ -316,7 +301,7 @@ class MultiEvaluation(Evaluation):
 
         return cm_dict, true_sum, predict_sum, confusion_matrix
 
-    def _confusion_matrix_evaluation(self, confusion_matrix, true_sum, predict_sum):
+    def evaluate_confusion_matrix(self, confusion_matrix, true_sum, predict_sum):
         """
         Calculate Precision by label and Recall by label
         Args:

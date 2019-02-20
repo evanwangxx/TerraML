@@ -12,12 +12,12 @@ config = {
         "run_model_training": True,
         "run_evaluation": True,
         "save_feature": False,
-        "save_pipeline": True,
-        "save_model": True,
+        "save_pipeline": False,
+        "save_model": False,
     },
     # Path Options
     "path": {
-        "input_path": "hdfs://ss-cdg-3-v2/data/MAPREDUCE/CDG/g_sng_gdt_gdt_targeting/halfyear/neptunewang/ml_data/adult.txt",
+        "input_path": "hdfs://ss-cdg-3-v2/data/MAPREDUCE/CDG/g_sng_gdt_gdt_targeting/halfyear/neptunewang/3c_device_prediction/features/test/change",
         "df_path": "hdfs://ss-cdg-3-v2/data/MAPREDUCE/CDG/g_sng_gdt_gdt_targeting/halfyear/neptunewang/terraml/df/",
         "pip_path": "hdfs://ss-cdg-3-v2/data/MAPREDUCE/CDG/g_sng_gdt_gdt_targeting/halfyear/neptunewang/terraml/pipeline/",
         "model_path": "hdfs://ss-cdg-3-v2/data/MAPREDUCE/CDG/g_sng_gdt_gdt_targeting/halfyear/neptunewang/terraml/model/",
@@ -26,19 +26,33 @@ config = {
     # Feature Transformation
     "feature": {
         # - all features: List[String]
-        "feature_all": "_c1|_c2|_c3|_c5|_c12|_c13".split('|'),
+        "feature_all": "brand,device_alias,model_in_use_month,price,age,gender,education," \
+                       "common_country_id_4ad,common_province_id_4ad,common_city_id_4ad," \
+                       "open_card_num,pay_banks,screen_pixel,cam_back,cam_front,cam_type," \
+                       "core_cnt,cpu_model,cpu_frequency,ram,rom,battery_size,weight," \
+                       "simcard,isdualcard,exposed_year,exposed_month,buy_year,buy_month," \
+                       "date_from_expose,resolution_length,resolution_width," \
+                       "model_size_length,model_size_width,model_size_thick".split(","),
         # - label column: String
-        "label": "_c14",
+        "label": "label",
         # - one-hot columns: List[String]
-        "one_hot": "_c1|_c3|_c5|_c13".split('|'),
+        "one_hot": ["brand", "device_alias", "gender", "education",
+                    "common_country_id_4ad", "common_province_id_4ad", "common_city_id_4ad",
+                    "cam_back", "cam_front", "cam_type", "core_cnt", "cpu_model", "cpu_frequency", "ram", "rom",
+                    "simcard", "isdualcard"],
         # - z-score columns: List[String]
         "z_score": [],
         # - max-min columns: List[String]
-        "max_min": "_c2|_c12".split('|')
+        "max_min": ['model_in_use_month', 'price', 'age', 'open_card_num',
+                    'pay_banks', 'screen_pixel', 'battery_size', 'weight',
+                    'exposed_year', 'exposed_month', 'buy_year','buy_month',
+                    'date_from_expose', 'resolution_length', 'resolution_width',
+                    'model_size_length', 'model_size_width', 'model_size_thick']
     },
 
     # Model Training
     "train_validation_test": [0.7, 0.2, 0.1],
+    "label_sample_ratio": [1.0, 0.25],
     "model_option": "lr",
     "param_map": {
         "lr": {
@@ -65,7 +79,7 @@ config = {
 
     # Model Evaluation
     # - model threshold
-    "threshold": [0.50],
+    "threshold": [0.25, 0.50, 0.75],
     # - evaluation type: support b: binary || m: multi
     "type": "b"
 }

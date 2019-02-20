@@ -4,13 +4,29 @@
 # Author: Neptunewang
 # Create: 2019/01/30
 #
-# Model Training
+# Feature Selection
+# Spark ML Model Training
 
+from pyspark.ml.stat import ChiSquareTest, Correlation
 from pyspark.ml.classification import LogisticRegression
 from pyspark.ml.classification import RandomForestClassifier
 from pyspark.ml.classification import GBTClassifier
 
 from transformer import FeatureName
+
+
+class FeatureSelection(FeatureName):
+
+    def __init__(self):
+        FeatureName.__init__(self)
+
+    def chi_square_test(self, data, feature_col):
+        test = ChiSquareTest.test(data, feature_col, self.label_index_name)
+        print(test.statistics)
+
+    # def correlation
+    #
+    # # def check_feature_leak(self, data, categotical_features):
 
 
 class Classification(FeatureName):
@@ -95,5 +111,3 @@ class Classification(FeatureName):
 
     def save(self, path):
         self.model.write().overwrite().save(path)
-
-

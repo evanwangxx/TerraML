@@ -8,34 +8,99 @@
 
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
+from pyspark.sql.functions import col
 
-from transformer import Pipeline
-from model_training import Classification
+from transformer import Pipeline, FeatureName
+from model_training import Classification, FeatureSelection
 from evaluation import BinaryEvaluation, MultiEvaluation
 from terraml_conf import config
 
 
-class Manager:
+class InputChecker(object):
     def __init__(self):
+        self.feature = config["feature"]
         self.option = config["option"]
         self.path = config["path"]
         self.feature = config["feature"]
         self.model_option = config["model_option"]
         self.param_map = config["param_map"]
 
-        # defence
-        self._check_config()
+        self._columns_values = None
+        self._label = None
+        self._feature = None
+        self._one_hot = None
+        self._min_max = None
+        self._z_score = None
+
+    def _check_column_option_exist(self, columns):
+        # check true or false certain column exists in df
+        for col in columns:
+            if col in self.columns_values:
+                pass
+            else:
+                raise ValueError("ERROR | column %s not found in data" % col)
+
+    @property
+    def columns_values(self):
+        return self._columns_values
+
+    @columns_values.setter
+    def columns_values(self, column_list):
+        assert column_list, "ERROR | Dataframe-column-value is empty"
+        self._columns_values = column_list
+
+    @property
+    def label(self):
+        return self._label
+
+    @label.setter
+    def label(self, label):
+        self._check_column_option_exist([label])
+        self._label = label
+
+    @property
+    def feature_columns(self):
+        return self._feature
+
+    @feature_columns.setter
+    def feature_columns(self, column_list):
+        self._check_column_option_exist(column_list)
+        self._feature = column_list
+
+    @property
+    def one_hot_columns(self):
+        return self._one_hot
+
+    @one_hot_columns.setter
+    def one_hot_columns(self, column_list):
+        self._check_column_option_exist(column_list)
+        self._one_hot = column_list
+
+    @property
+    def min_max_columns(self):
+        return self._min_max
+
+    @min_max_columns.setter
+    def min_max_columns(self, column_list):
+        self._check_column_option_exist(column_list)
+        self._min_max = column_list
+
+    @property
+    def z_score_columns(self):
+        return self._z_score
+
+    @z_score_columns.setter
+    def z_score_columns(self, column_list):
+        self._check_column_option_exist(column_list)
+        self._z_score = column_list
 
     def _check_path(self, option, path, text):
-        assert (self.option[option] and self.path[path]) or \
-               (not self.option[option]), \
+        assert (self.option[option] and self.path[path]) or (not self.option[option]), \
             "ERROR | if save %s, must have a path to write" % text
 
     def _check_type(self, option, path, text):
-        assert (isinstance(self.option[option], bool) and
-                isinstance(self.path[path], str)) or \
-               (not self.option[option]), \
-            "ERROR | $s path is not vaild" % text
+        assert (isinstance(self.option[option], bool) and isinstance(self.path[path], str)) \
+               or (not self.option[option]), "ERROR | %s path is not valid" % text
 
     def _check_feature_save(self):
         option = "save_feature"
@@ -58,10 +123,24 @@ class Manager:
         self._check_path(option, path, text)
         self._check_type(option, path, text)
 
-    def _check_config(self):
+    def check_config(self):
         self._check_feature_save()
         self._check_pipeline_save()
         self._check_model_save()
+
+    def init_columns(self, df):
+        self.columns_values = df.columns
+        self.feature_columns = self.feature["feature_all"]
+        self.label = self.feature["label"]
+        self.one_hot_columns = self.feature["one_hot"]
+        self.z_score_columns = self.feature["z_score"]
+        self.min_max_columns = self.feature["max_min"]
+
+
+class Manager(InputChecker):
+    def __init__(self):
+        InputChecker.__init__(self)
+        self.check_config()
 
     def load_raw_data(self, spark, path):
         return spark.read.csv(path, inferSchema="true")
@@ -73,17 +152,21 @@ class Manager:
                 raise ValueError("ERROR | Weights must be positive. Found weight value: %s" % w)
         return df.randomSplit(weights)
 
-    def train_feature_pipeline(self, data):
-        feature_all = self.feature["feature_all"]
-        label = self.feature["label"]
-        one_hot = self.feature["one_hot"]
-        z_score = self.feature["z_score"]
-        max_min = self.feature["max_min"]
+    def sample_pos_neg(self, df, pos_ratio, neg_ratio):
+        fn = FeatureName()
+        pos = df.where(col(fn.label_index_name) == 1.0).sample(False, pos_ratio)
+        neg = df.where(col(fn.label_index_name) == 0.0).sample(False, neg_ratio)
+        print("INFO | pos count: ", pos.count(), " | neg count: ", neg.count())
+        return pos, neg
 
+    def train_feature_pipeline(self, data):
         pip = Pipeline()
         pipeline, feature_name = pip\
-            .pipeline_builder(feature_name=feature_all, label_name=label,
-                              one_hot_name=one_hot, z_score_name=z_score, max_min_name=max_min)
+            .pipeline_builder(feature_name=self.feature_columns,
+                              label_name=self.label,
+                              one_hot_name=self.one_hot_columns,
+                              z_score_name=self.z_score_columns,
+                              max_min_name=self.min_max_columns)
         pipeline_model = pip.train(data)
 
         if self.option["save_pipeline"]:
@@ -103,18 +186,21 @@ class Manager:
 
         return model
 
-    def evaluation(self, feature, model, spark):
+    def evaluation(self, data, model, spark):
         threshold = config["threshold"]
         model_type = config["type"]
+        label_and_probability = model.transform(data).select(self.label, "probability")
 
         if model_type == "binary" or model_type == "b":
-            metric, auc, apr = BinaryEvaluation(model, spark).evaluation(feature, threshold)
+            metric, auc, apr = BinaryEvaluation(spark)\
+                .evaluation(label_and_probability, threshold)
             print("INFO | AUC: %s | APR: %s" % (auc, apr))
             metric.show()
             return metric, auc, apr
         elif model_type == "multi" or model_type == "m":
-            cm, precision_label, recall_label = MultiEvaluation(model, spark).evaluation(feature)
-            # TODO
+            cm, precision_label, recall_label = MultiEvaluation(spark)\
+                .evaluation(label_and_probability)
+            # TODO: no print, save log
             print(cm)
             print(precision_label)
             print(recall_label)
@@ -131,17 +217,23 @@ class Manager:
             .getOrCreate()
 
         data_path = self.path["input_path"]
-        data = self.load_raw_data(spark, data_path)
+        data = self.load_raw_data(spark, data_path).persist()
+        self.init_columns(data)
 
         pipeline_model, feature_name = self.train_feature_pipeline(data)
         feature = pipeline_model.transform(data).select(feature_name)
+        pos, neg = self.sample_pos_neg(feature,
+                                       config["label_sample_ratio"][0],
+                                       config["label_sample_ratio"][1])
+        df = pos.unionAll(neg).persist()
+        data.unpersist()
 
-        train, validation, test = self.split_train_test(feature, config["train_validation_test"])
+        FeatureSelection.chi_square_test(df, "feature", "label_indexed")
+
+        train, validation, test = self.split_train_test(df, config["train_validation_test"])
         ml_model = self.train_model(train)
 
         self.evaluation(train, ml_model, spark)
-        self.evaluation(validation, ml_model, spark)
-        self.evaluation(test, ml_model, spark)
 
         sc.stop()
 
