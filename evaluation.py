@@ -1,5 +1,6 @@
-#! /usr/bin/env python
 # -*- coding: utf-8 -*-
+# Copyright 2019, Tencent Inc.
+# All rights reserved
 #
 # Author: Neptunewang
 # Create: 2018/08/29
@@ -35,8 +36,8 @@ class Evaluation(object):
         if not length:
             length = label_and_prediction.count()
 
-        accuracy = float(label_and_prediction.filter(lambda r: r[0] == r[1]).count()) / float(
-            length)
+        accuracy = float(label_and_prediction.filter(
+            lambda r: r[0] == r[1]).count()) / float(length)
         return accuracy
 
     @property
@@ -262,7 +263,8 @@ class MultiEvaluation(Evaluation):
             .map(lambda l: (l[0], float(l[1].argmax()))).cache()
 
         self.accuracy = Evaluation.calculate_accuracy(label_and_predict)
-        cm, true_sum, predict_sum, confusion_matrix = self.construct_confusion_matrix(label_and_predict)
+        cm, true_sum, predict_sum, confusion_matrix = self\
+            .construct_confusion_matrix(label_and_predict)
         self.precision, self.recall = self.evaluate_confusion_matrix(cm, true_sum, predict_sum)
 
         self.confusion_matrix = np.array(confusion_matrix)

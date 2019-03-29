@@ -1,5 +1,6 @@
-#! /usr/bin/env python
 # -*- coding: utf-8 -*-
+# Copyright 2019, Tencent Inc.
+# All rights reserved
 #
 # Author: Neptunewang
 # Create: 2018/08/16
@@ -8,7 +9,7 @@
 #
 
 from pyspark.ml.pipeline import Pipeline as SparkPipeline
-from pyspark.ml.feature import OneHotEncoder, StandardScaler, MinMaxScaler
+from pyspark.ml.feature import OneHotEncoder, StandardScaler, MinMaxScaler, OneHotEncoderEstimator
 from pyspark.ml.feature import PCA, Imputer
 from pyspark.ml.feature import VectorAssembler, StringIndexer
 
@@ -47,30 +48,32 @@ class Transformer(FeatureName):
     def __init__(self):
         FeatureName.__init__(self)
 
-    # def one_hot_encoder(input_one_hot_feature_names):
-    #     """ Attention: this function only available for Spark version over 2.3.0
-    #         args:
-    #              input_one_hot_feature_names: List(String), feature names
-    #         returns:
-    #              one_hot_pipeline_stage: List(PipelineStage),one hot pipeline stages
-    #                                      and modified one hot column names
-    #              feature_name: List(String), feature names
-    #     """
-    #
-    #     output_name = [name + "_one_hot" for name in input_one_hot_feature_names]
-    #     encoder = OneHotEncoderEstimator(inputCols=input_one_hot_feature_names,
-    #                                      outputCols=output_name)
-    #
-    #     one_hot_pipeline_stage = Pipeline().setStages(encoder)
-    #
-    #     return one_hot_pipeline_stage, output_name
+    @staticmethod
+    @since("2.3.0")
+    def one_hot_encoder_estimator(input_one_hot_feature_names):
+        """ Attention: this function only available for Spark version over 2.3.0
+            args:
+                 input_one_hot_feature_names: List(String), feature names
+            returns:
+                 one_hot_pipeline_stage: List(PipelineStage),one hot pipeline stages
+                                         and modified one hot column names
+                 feature_name: List(String), feature names
+        """
+
+        output_name = [name + "_one_hot" for name in input_one_hot_feature_names]
+        encoder = OneHotEncoderEstimator(inputCols=input_one_hot_feature_names,
+                                         outputCols=output_name)
+
+        one_hot_pipeline_stage = SparkPipeline().setStages(encoder)
+
+        return one_hot_pipeline_stage, output_name
 
     def one_hot_encoder(self, column_names, invalid="keep"):
         """
         Attention: OneHotEncoder has been deprecated in 2.3.0 and will be removed in 3.0.0
         Args:
             column_names: List(String), feature names
-            invalid: handle invalid situation, default keep
+            invalid: handle invalid situation, default keep, other choices: "error", "skip"
 
         Returns:
             list of pipeline stage
@@ -319,7 +322,8 @@ class Pipeline(FeatureName):
         if label_name:
             label_index_stage = StringIndexer()\
                 .setInputCol(label_name)\
-                .setOutputCol(self.label_index_name)
+                .setOutputCol(self.label_index_name)\
+                .setHandleInvalid("keep")
             stage.append(label_index_stage)
             features.extend([label_name, self.label_index_name])
 

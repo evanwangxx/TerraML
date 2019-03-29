@@ -1,13 +1,13 @@
-#! /usr/bin/env python
 # -*- coding: utf-8 -*-
+# Copyright 2019, Tencent Inc.
+# All rights reserved
 #
-# Author: Neptunewang
-# Create: 2019/01/30
+# Create by Neptunewang on 2019/01/30
 #
 # Feature Selection
 # Spark ML Model Training
 
-from pyspark.ml.stat import ChiSquareTest, Correlation
+from pyspark.ml.stat import ChiSquareTest
 from pyspark.ml.classification import LogisticRegression
 from pyspark.ml.classification import RandomForestClassifier
 from pyspark.ml.classification import GBTClassifier
@@ -22,11 +22,7 @@ class FeatureSelection(FeatureName):
 
     def chi_square_test(self, data, feature_col):
         test = ChiSquareTest.test(data, feature_col, self.label_index_name)
-        print(test.statistics)
-
-    # def correlation
-    #
-    # # def check_feature_leak(self, data, categotical_features):
+        return test.statistics
 
 
 class Classification(FeatureName):
@@ -80,12 +76,11 @@ class Classification(FeatureName):
         """
         train a Spark ML model
         Args:
-            data:
-            option:
-            param_map:
+            data: as name
+            option: model option
+            param_map: parameter map
 
-        Returns:
-
+        Returns: SparkML model
         """
         if option == "lr":
             md = self.logistic_regression(elastic_param=param_map["elastic_param"],
@@ -104,6 +99,14 @@ class Classification(FeatureName):
         return self.model
 
     def predict(self, data, only_lp=True):
+        """
+        Predict by a SparkML model
+        Args:
+            data: as name
+            only_lp: only select label, prediction and corresponding probability column
+
+        Returns: result dataframe
+        """
         df = self.model.transpose(data)
         if only_lp:
             df = df.select(self.label_index_name, self.prediction_name, self.probability)

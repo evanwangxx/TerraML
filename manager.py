@@ -1,5 +1,8 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
+
+# Copyright 2019, Tencent Inc.
+# All rights reserved
 #
 # Author: Neptunewang
 # Create: 2019/01/30
@@ -11,7 +14,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 
 from transformer import Pipeline, FeatureName
-from model_training import Classification, FeatureSelection
+from model_training import Classification
 from evaluation import BinaryEvaluation, MultiEvaluation
 from terraml_conf import config
 
@@ -34,11 +37,9 @@ class InputChecker(object):
 
     def _check_column_option_exist(self, columns):
         # check true or false certain column exists in df
-        for col in columns:
-            if col in self.columns_values:
-                pass
-            else:
-                raise ValueError("ERROR | column %s not found in data" % col)
+        for c in columns:
+            if c not in self.columns_values:
+                raise ValueError("ERROR | column %s not found in data" % c)
 
     @property
     def columns_values(self):
@@ -94,39 +95,20 @@ class InputChecker(object):
         self._check_column_option_exist(column_list)
         self._z_score = column_list
 
-    def _check_path(self, option, path, text):
+    def _check_path(self, option, path):
         assert (self.option[option] and self.path[path]) or (not self.option[option]), \
-            "ERROR | if save %s, must have a path to write" % text
+            "ERROR | if save %s, must have a path to write" % option
 
-    def _check_type(self, option, path, text):
+    def _check_type(self, option, path):
         assert (isinstance(self.option[option], bool) and isinstance(self.path[path], str)) \
-               or (not self.option[option]), "ERROR | %s path is not valid" % text
-
-    def _check_feature_save(self):
-        option = "save_feature"
-        path = "df_path"
-        text = "feature"
-        self._check_path(option, path, text)
-        self._check_type(option, path, text)
-
-    def _check_pipeline_save(self):
-        option = "save_pipeline"
-        path = "pip_path"
-        text = "pipeline"
-        self._check_path(option, path, text)
-        self._check_type(option, path, text)
-
-    def _check_model_save(self):
-        option = "save_model"
-        path = "model_path"
-        text = "model"
-        self._check_path(option, path, text)
-        self._check_type(option, path, text)
+               or (not self.option[option]), "ERROR | %s path is not valid" % option
 
     def check_config(self):
-        self._check_feature_save()
-        self._check_pipeline_save()
-        self._check_model_save()
+        option_list = ["save_feature", "save_pipeline", "save_model"]
+        path_list = ["df_path", "pip_path", "model_path"]
+        for option, path in zip(option_list, path_list):
+            self._check_path(option, path)
+            self._check_type(option, path)
 
     def init_columns(self, df):
         self.columns_values = df.columns
@@ -142,6 +124,7 @@ class Manager(InputChecker):
         InputChecker.__init__(self)
         self.check_config()
 
+    # mainly for test run
     def load_raw_data(self, spark, path):
         return spark.read.csv(path, inferSchema="true")
 
@@ -167,10 +150,10 @@ class Manager(InputChecker):
                               one_hot_name=self.one_hot_columns,
                               z_score_name=self.z_score_columns,
                               max_min_name=self.min_max_columns)
-        pipeline_model = pip.train(data)
+        pipeline_model = pipeline.fit(data)
 
         if self.option["save_pipeline"]:
-            pip.save(self.path["pip_path"])
+            pipeline_model.save(self.path["pip_path"])
 
         return pipeline_model, feature_name
 
@@ -209,10 +192,9 @@ class Manager(InputChecker):
             raise ValueError("ERROR | Only support b-binary/m-multi evaluation")
 
     def main(self):
-        sc = SparkContext(appName="3c_variables_make")
+        sc = SparkContext(appName="ml_model_training")
         spark = SparkSession.builder\
-            .master("local") \
-            .appName("3c_model_training") \
+            .appName("ml_model_training") \
             .config("spark.some.config.option", "some-value") \
             .getOrCreate()
 
@@ -225,28 +207,18 @@ class Manager(InputChecker):
         pos, neg = self.sample_pos_neg(feature,
                                        config["label_sample_ratio"][0],
                                        config["label_sample_ratio"][1])
-        df = pos.unionAll(neg).persist()
+        df = pos.union(neg).persist()
         data.unpersist()
-
-        FeatureSelection.chi_square_test(df, "feature", "label_indexed")
 
         train, validation, test = self.split_train_test(df, config["train_validation_test"])
         ml_model = self.train_model(train)
 
         self.evaluation(train, ml_model, spark)
+        self.evaluation(validation, ml_model, spark)
+        self.evaluation(test, ml_model, spark)
 
         sc.stop()
 
 
-TERRA_ML = """
- _____                              __  
-/__   \___ _ __ _ __ __ _  /\/\    / /  
-  / /\/ _ \ '__| '__/ _` |/    \  / /   
- / / |  __/ |  | | | (_| / /\/\ \/ /___ 
- \/   \___|_|  |_|  \__,_\/    \/\____/ 
-
-"""
-
 if __name__ == "__main__":
-    print(TERRA_ML)
     Manager().main()

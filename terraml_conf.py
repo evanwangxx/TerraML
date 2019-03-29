@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
+# Copyright 2019, Tencent Inc.
+# All rights reserved
 #
 # Author: Neptunewang
 # Create: 2019/01/30
 #
 # config for TerraML
+# specify for 3c-phone-prediction
+
+PATH = "hdfs://ss-cdg-3-v2/data/MAPREDUCE/CDG/g_sng_gdt_gdt_targeting/halfyear/neptunewang/"
 
 config = {
     # Running Option
@@ -12,15 +17,15 @@ config = {
         "run_model_training": True,
         "run_evaluation": True,
         "save_feature": False,
-        "save_pipeline": False,
-        "save_model": False,
+        "save_pipeline": True,
+        "save_model": True,
     },
     # Path Options
     "path": {
-        "input_path": "hdfs://ss-cdg-3-v2/data/MAPREDUCE/CDG/g_sng_gdt_gdt_targeting/halfyear/neptunewang/3c_device_prediction/features/test/change",
-        "df_path": "hdfs://ss-cdg-3-v2/data/MAPREDUCE/CDG/g_sng_gdt_gdt_targeting/halfyear/neptunewang/terraml/df/",
-        "pip_path": "hdfs://ss-cdg-3-v2/data/MAPREDUCE/CDG/g_sng_gdt_gdt_targeting/halfyear/neptunewang/terraml/pipeline/",
-        "model_path": "hdfs://ss-cdg-3-v2/data/MAPREDUCE/CDG/g_sng_gdt_gdt_targeting/halfyear/neptunewang/terraml/model/",
+        "input_path": PATH + "/3c_device_prediction/features/test/change",
+        "df_path": PATH + "terraml/df/",
+        "pip_path": PATH + "terraml/pipeline/",
+        "model_path": PATH + "terraml/model/",
         "predict_df_path": "path"
     },
     # Feature Transformation
@@ -38,14 +43,15 @@ config = {
         # - one-hot columns: List[String]
         "one_hot": ["brand", "device_alias", "gender", "education",
                     "common_country_id_4ad", "common_province_id_4ad", "common_city_id_4ad",
-                    "cam_back", "cam_front", "cam_type", "core_cnt", "cpu_model", "cpu_frequency", "ram", "rom",
+                    "cam_back", "cam_front", "cam_type", "core_cnt", "cpu_model", "cpu_frequency",
+                    "ram", "rom",
                     "simcard", "isdualcard"],
         # - z-score columns: List[String]
         "z_score": [],
         # - max-min columns: List[String]
         "max_min": ['model_in_use_month', 'price', 'age', 'open_card_num',
                     'pay_banks', 'screen_pixel', 'battery_size', 'weight',
-                    'exposed_year', 'exposed_month', 'buy_year','buy_month',
+                    'exposed_year', 'exposed_month', 'buy_year', 'buy_month',
                     'date_from_expose', 'resolution_length', 'resolution_width',
                     'model_size_length', 'model_size_width', 'model_size_thick']
     },
